@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>💵 VN Money Detector — Web UI</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root { --card:#111827; --bg:#0f172a; --fg:#e2e8f0; --accent:#22c55e; }
+    body { background: var(--bg); color: var(--fg); }
+    .card { background: var(--card); border-radius: 1rem; box-shadow: 0 10px 25px rgba(0,0,0,.25); }
+    .btn { border-radius: .75rem; padding:.6rem 1rem; font-weight:600; }
+    .btn-main { background: #60a5fa; color:#0b1220; }
+    .btn-ok { background: var(--accent); color:#0b1220; }
+    .btn-danger { background: #ef4444; color:#fff; }
+  </style>
+</head>
+<body class="min-h-screen">
+  <header class="card max-w-7xl mx-auto mt-6 p-5 flex items-center justify-between">
+    <h1 class="text-xl md:text-2xl font-semibold">💵 VN Money Detector — Web UI</h1>
+    <div id="status" class="text-sm opacity-80">Model: đang kiểm tra…</div>
+  </header>
+
+  <main class="max-w-7xl mx-auto p-5 grid gap-6">
+    <!-- Tabs -->
+    <div class="flex gap-2 flex-wrap">
+      <button class="btn btn-main" data-tab="single">Ảnh đơn</button>
+      <button class="btn" data-tab="webcam">Webcam</button>
+      <button class="btn" data-tab="batch">Batch</button>
+      <button class="btn" data-tab="settings">Settings</button>
+      <button class="btn" data-tab="about">About</button>
+    </div>
+
+    <!-- SINGLE -->
+    <section id="tab-single" class="card p-5 grid md:grid-cols-2 gap-5">
+      <div>
+        <div id="drop" class="border-2 border-dashed rounded-xl p-6 text-center opacity-90">
+          <p class="mb-2">Kéo/thả ảnh vào đây hoặc bấm để chọn</p>
+          <input id="file" type="file" accept="image/*" class="hidden" />
+          <button id="pick" class="btn btn-main">📂 Chọn ảnh</button>
+        </div>
+        <img id="preview" class="mt-4 max-h-[360px] rounded-xl mx-auto hidden" />
+      </div>
+      <div>
+        <div class="flex gap-2 mb-3">
+          <button id="predict" class="btn btn-ok">🧪 Dự đoán</button>
+          <div id="progress" class="text-sm self-center opacity-80 hidden">Đang xử lý…</div>
+        </div>
+        <div class="card p-4">
+          <h3 class="text-lg font-semibold mb-2">Kết quả</h3>
+          <div id="pred" class="text-base">—</div>
+          <div id="prob" class="text-sm opacity-80"></div>
+          <div class="mt-3 space-y-2" id="top3"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- WEBCAM -->
+    <section id="tab-webcam" class="card p-5 hidden">
+      <div class="flex items-center gap-2 mb-3">
+        <button id="startCam" class="btn btn-main">▶️ Bắt đầu</button>
+        <button id="snap" class="btn btn-ok" disabled>📸 Chụp & dự đoán</button>
+      </div>
+      <video id="video" class="rounded-xl w-full max-w-2xl" autoplay playsinline></video>
+      <canvas id="frame" class="hidden"></canvas>
+      <div class="mt-4 card p-4">
+        <div id="predCam" class="text-base">—</div>
+        <div id="probCam" class="text-sm opacity-80"></div>
+        <div class="mt-3 space-y-2" id="top3Cam"></div>
+      </div>
+    </section>
+
+    <!-- BATCH -->
+    <section id="tab-batch" class="card p-5 hidden">
+      <div class="flex items-center gap-2">
+        <input id="files" type="file" accept="image/*" multiple class="hidden" />
+        <button id="pickBatch" class="btn btn-main">📁 Chọn nhiều ảnh</button>
+        <button id="runBatch" class="btn btn-ok" disabled>🚀 Chạy batch</button>
+        <form id="dlCsvForm" class="ml-auto" method="POST" action="http://localhost:8000/api/batch_csv" target="_blank">
+          <input type="hidden" name="rows_json" id="rowsJson" />
+          <button id="dlCsv" class="btn" disabled>💾 Tải CSV</button>
+        </form>
+      </div>
+      <div class="overflow-auto mt-4">
+        <table class="min-w-full text-sm">
+          <thead class="opacity-80">
+            <tr><th class="text-left p-2">PATH</th><th class="text-left p-2">LABEL</th><th class="text-left p-2">PROB</th></tr>
+          </thead>
+          <tbody id="batchRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="tab-settings" class="card p-5 hidden">
+      <div class="grid md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm mb-1">Model .h5</label>
+          <input id="modelPath" class="w-full p-2 rounded-md text-black" placeholder="/đường/dẫn/model.h5" />
+          <label class="block text-sm mt-3 mb-1">classes.json</label>
+          <input id="classesPath" class="w-full p-2 rounded-md text-black" placeholder="/đường/dẫn/classes.json" />
+          <div class="grid grid-cols-3 gap-3 mt-3">
+            <div>
+              <label class="block text-sm mb-1">IMG_SIZE</label>
+              <input id="imgSize" class="w-full p-2 rounded-md text-black" value="224" />
+            </div>
+            <div>
+              <label class="block text-sm mb-1">Device</label>
+              <select id="device" class="w-full p-2 rounded-md text-black">
+                <option>auto</option>
+                <option>cuda</option>
+                <option>cpu</option>
+              </select>
+            </div>
+          </div>
+          <button id="loadModel" class="btn btn-ok mt-4">🔄 Load/Reload Model</button>
+        </div>
+        <div class="card p-4">
+          <div class="text-sm" id="devInfo">PyTorch/Device/Model info…</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ABOUT -->
+    <section id="tab-about" class="card p-5 hidden">
+      <h3 class="text-lg font-semibold mb-2">VN Money Detector — HTML UI</h3>
+      <p class="opacity-80">• Ảnh đơn, Webcam, Batch nhiều ảnh, Load model, Top‑3 bar, CSV
+      <br/>• UI tối, card, nút tròn, responsive</p>
+      <p class="opacity-80 mt-2">Tip: giữ dữ liệu test riêng để đánh giá tổng quát hoá.</p>
+    </section>
+  </main>
+
+  <script>
+    const $ = (s)=>document.querySelector(s);
+    const tabs = ["single","webcam","batch","settings","about"];
+    const showTab = (name)=>{
+      tabs.forEach(t=>{
+        $("#tab-"+t).classList.toggle("hidden", t!==name);
+        document.querySelector(`[data-tab="${t}"]`).classList.toggle("btn-main", t===name);
+      });
+    };
+    document.querySelectorAll('[data-tab]').forEach(btn=>btn.addEventListener('click',()=>showTab(btn.dataset.tab)));
+    showTab("single");
+
+    const API = "http://localhost:8000";
+    const statusEl = $("#status");
+    async function refreshInfo(){
+      try{
+        const r = await fetch(API+"/api/info");
+        const j = await r.json();
+        statusEl.textContent = j.ready ? `Model OK | Device: ${j.device}` : "Model: chưa tải";
+        $("#imgSize").value = j.img_size ?? 224;
+        $("#devInfo").textContent = JSON.stringify(j, null, 2);
+      }catch(e){ statusEl.textContent = "Không kết nối được server"; }
+    }
+    refreshInfo();
+
+    // ---- Single image ----
+    const fileInput = $("#file"), pickBtn=$("#pick"), drop=$("#drop"), preview=$("#preview");
+    let fileBlob = null;
+    pickBtn.onclick = ()=>fileInput.click();
+    fileInput.onchange = ()=>{ if(fileInput.files[0]) handleFile(fileInput.files[0]); };
+    drop.onclick = ()=>fileInput.click();
+    ;['dragover','dragenter'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault(); drop.classList.add('ring-2','ring-blue-400');}));
+    ;['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault(); drop.classList.remove('ring-2','ring-blue-400');}));
+    drop.addEventListener('drop', e=>{ const f = e.dataTransfer.files[0]; if(f) handleFile(f); });
+
+    function handleFile(f){ fileBlob=f; const url=URL.createObjectURL(f); preview.src=url; preview.classList.remove('hidden'); }
+
+    $("#predict").onclick = async ()=>{
+      if(!fileBlob){ alert('Chưa có ảnh'); return; }
+      $("#progress").classList.remove('hidden');
+      const fd = new FormData();
+      fd.append('file', fileBlob, fileBlob.name||'image.jpg');
+      const r = await fetch(API+"/api/predict", {method:'POST', body:fd});
+      const j = await r.json();
+      $("#progress").classList.add('hidden');
+      if(!j.ok){ alert(j.error); return; }
+      $("#pred").textContent = `🏷️ Mệnh giá: ${j.pred}`;
+      $("#prob").textContent = `Độ tin cậy: ${(j.prob*100).toFixed(2)}%`;
+      renderTop3("#top3", j.top3);
+    };
+
+    function renderTop3(sel, arr){
+      const box = document.querySelector(sel); box.innerHTML='';
+      arr.forEach(({label, prob})=>{
+        const pct = Math.round(prob*100);
+        const row = document.createElement('div');
+        row.innerHTML = `
+          <div class="text-sm mb-1">${label}</div>
+          <div class="w-full bg-slate-800 rounded-lg h-3">
+            <div class="h-3 rounded-lg" style="width:${pct}%; background: var(--accent);"></div>
+          </div>
+          <div class="text-xs opacity-80 mt-1">${pct}%</div>`;
+        row.className = 'mb-2';
+        box.appendChild(row);
+      });
+    }
+
+    // ---- Webcam ----
+    const video = $("#video"), canvas=$("#frame"), startBtn=$("#startCam"), snapBtn=$("#snap");
+    let stream=null;
+    startBtn.onclick = async()=>{
+      try{ stream = await navigator.mediaDevices.getUserMedia({video:true});
+        video.srcObject = stream; snapBtn.disabled=false; } catch(e){ alert('Không mở được webcam'); }
+    };
+    snapBtn.onclick = async()=>{
+      if(!stream) return;
+      canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d'); ctx.drawImage(video,0,0);
+      canvas.toBlob(async (blob)=>{
+        const fd = new FormData(); fd.append('file', blob, 'frame.jpg');
+        const r = await fetch(API+"/api/predict", {method:'POST', body:fd});
+        const j = await r.json();
+        if(!j.ok){ alert(j.error); return; }
+        $("#predCam").textContent = `🏷️ ${j.pred}`;
+        $("#probCam").textContent = `${(j.prob*100).toFixed(1)}%`;
+        renderTop3("#top3Cam", j.top3);
+      }, 'image/jpeg', 0.9);
+    };
+
+    // ---- Batch ----
+    const filesInput = $("#files"), pickBatch=$("#pickBatch"), runBatch=$("#runBatch"), dlBtn=$("#dlCsv"), rowsTbody=$("#batchRows"), rowsJson=$("#rowsJson");
+    let batchFiles=[]; let lastRows=[];
+    pickBatch.onclick = ()=> filesInput.click();
+    filesInput.onchange = ()=>{ batchFiles = Array.from(filesInput.files); runBatch.disabled = batchFiles.length===0; dlBtn.disabled=true; rowsTbody.innerHTML=''; };
+    runBatch.onclick = async()=>{
+      if(batchFiles.length===0) return;
+      const fd = new FormData(); batchFiles.forEach(f=>fd.append('files', f, f.name));
+      const r = await fetch(API+"/api/predict_batch", {method:'POST', body:fd});
+      const j = await r.json(); if(!j.ok){ alert(j.error||'Lỗi batch'); return; }
+      lastRows = j.rows||[]; rowsTbody.innerHTML='';
+      lastRows.forEach(rw=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td class="p-2">${rw.path}</td><td class="p-2">${rw.label}</td><td class="p-2">${rw.prob==null?'':(rw.prob*100).toFixed(2)+'%'}</td>`;
+        rowsTbody.appendChild(tr);
+      });
+      rowsJson.value = JSON.stringify(lastRows);
+      dlBtn.disabled = lastRows.length===0;
+    };
+
+    // ---- Settings ----
+    $("#loadModel").onclick = async()=>{
+      const payload = {
+        model_path: $("#modelPath").value||null,
+        classes_path: $("#classesPath").value||null,
+        img_size: +( $("#imgSize").value || 224 ),
+        device: $("#device").value||'auto'
+      };
+      const r = await fetch(API+"/api/load_model", {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+      const j = await r.json();
+      if(!j.ok){ alert(j.error); return; }
+      await refreshInfo();
+    }
+  </script>
+</body>
+</html>
